@@ -1,10 +1,11 @@
 use actix_web::web;
+use secrecy::{ExposeSecret, SecretString};
 use sqlx::PgPool;
 
 #[derive(serde::Deserialize)]
 pub struct Config {
     pub database: DBConfig,
-    pub web_port: u16
+    pub web_port: u16,
 }
 
 #[derive(serde::Deserialize)]
@@ -12,23 +13,27 @@ pub struct DBConfig {
     host: String,
     port: u16,
     username: String,
-    password: String,
-    db_name: String
+    password: SecretString,
+    db_name: String,
 }
 
 impl DBConfig {
     fn connect_str(&self) -> String {
         format!(
             "postgres://{}:{}@{}:{}/{}",
-            self.username, self.password, self.host, self.port, self.db_name
+            self.username,
+            self.password.expose_secret(),
+            self.host,
+            self.port,
+            self.db_name
         )
     }
 
     pub async fn connect(&self) -> web::Data<PgPool> {
         web::Data::new(
             PgPool::connect(&self.connect_str())
-            .await
-            .expect("failed connect to postgres.")
+                .await
+                .expect("failed connect to postgres."),
         )
     }
 }

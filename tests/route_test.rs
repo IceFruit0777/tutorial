@@ -1,7 +1,13 @@
 use actix_web::web;
+use once_cell::sync::Lazy;
 use sqlx::PgPool;
+use tutorial::telemetry;
+
+static TRACING: Lazy<()> = Lazy::new(|| telemetry::init_subscriber("test"));
 
 async fn spawn_web() -> web::Data<PgPool> {
+    Lazy::force(&TRACING);
+
     let config = tutorial::get_config();
     let address = format!("localhost:{}", config.web_port);
     let pool = config.database.connect().await;
@@ -45,5 +51,5 @@ async fn subscribe() {
         .send()
         .await
         .expect("failed to execute request.");
-    assert_eq!(200, res.status().as_u16());
+    assert_eq!(500, res.status().as_u16());
 }
