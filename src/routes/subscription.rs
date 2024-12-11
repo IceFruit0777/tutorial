@@ -17,6 +17,7 @@ pub struct FormData {
         %form.email
     )
 )]
+#[allow(clippy::async_yields_async)]
 pub async fn subscribe(form: web::Form<FormData>, pool: web::Data<PgPool>) -> impl Responder {
     let query_span = tracing::info_span!("polling future...");
     match sqlx::query!(
