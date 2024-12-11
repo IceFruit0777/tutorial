@@ -1,18 +1,20 @@
+use std::net::TcpListener;
+
 use actix_web::{dev::Server, web, App, HttpServer};
 use sqlx::PgPool;
 use tracing_actix_web::TracingLogger;
 
-use crate::route;
+use crate::routes;
 
-pub fn run(address: String, pool: web::Data<PgPool>) -> Server {
+pub fn run(listener: TcpListener, pool: web::Data<PgPool>) -> Server {
     HttpServer::new(move || {
         App::new()
             .wrap(TracingLogger::default())
             .app_data(pool.clone())
-            .route("/", web::get().to(route::greet))
-            .route("/subscribe", web::post().to(route::subscribe))
+            .route("/", web::get().to(routes::greet))
+            .route("/subscribe", web::post().to(routes::subscribe))
     })
-    .bind(address)
-    .expect("failed to bind web port.")
+    .listen(listener)
+    .expect("failed to bind a TcpListener.")
     .run()
 }
