@@ -1,5 +1,6 @@
 mod config;
-pub mod routes;
+mod domain;
+mod routes;
 mod startup;
 pub mod telemetry;
 

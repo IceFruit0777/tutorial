@@ -3,10 +3,12 @@ use sqlx::{types::chrono::Utc, PgPool};
 use tracing::Instrument;
 use uuid::Uuid;
 
+use crate::domain::Subscriber;
+
 #[derive(serde::Deserialize)]
 pub struct FormData {
-    name: String,
-    email: String,
+    pub name: String,
+    pub email: String,
 }
 
 #[tracing::instrument(
@@ -20,14 +22,19 @@ pub struct FormData {
 #[allow(clippy::async_yields_async)]
 pub async fn subscribe(form: web::Form<FormData>, pool: web::Data<PgPool>) -> impl Responder {
     let query_span = tracing::info_span!("polling future...");
+    let subscriber: Subscriber = match form.0.try_into() {
+        Ok(value) => value,
+        Err(_) => return HttpResponse::BadRequest(),
+    };
+
     match sqlx::query!(
         r#"
-        INSERT INTO subscription (id, email, name, subscribed_at)
+        INSERT INTO subscription (id, name, email, subscribed_at)
         VALUES($1, $2, $3, $4)
         "#,
         Uuid::new_v4(),
-        form.email,
-        form.name,
+        subscriber.name.as_ref(),
+        subscriber.email.as_ref(),
         Utc::now()
     )
     .execute(pool.get_ref())
