@@ -4,9 +4,9 @@ use validator::ValidateEmail;
 pub struct SubscriberEmail(String);
 
 impl SubscriberEmail {
-    pub fn parse(s: String) -> Result<SubscriberEmail, String> {
+    pub fn parse(s: &str) -> Result<SubscriberEmail, String> {
         if s.validate_email() {
-            Ok(Self(s))
+            Ok(Self(s.into()))
         } else {
             Err(format!("`{s}` is not a valid subscriber email."))
         }
@@ -27,6 +27,7 @@ mod tests {
 
     use crate::domain::SubscriberEmail;
 
+    // --------单元测试SubscriberEmail start--------
     #[derive(Clone, Debug)]
     struct ValidEmailFixture(pub String);
 
@@ -41,28 +42,28 @@ mod tests {
 
     #[quickcheck_macros::quickcheck]
     fn valid_email(email: ValidEmailFixture) -> bool {
-        dbg!(&email.0);
-        SubscriberEmail::parse(email.0).is_ok()
+        // dbg!(&email.0);
+        SubscriberEmail::parse(&email.0).is_ok()
     }
 
     #[test]
     fn invalid_empty_email() {
-        let email = "".to_string();
+        let email = "";
         assert_err!(SubscriberEmail::parse(email));
 
-        let email = " ".to_string();
+        let email = " ";
         assert_err!(SubscriberEmail::parse(email));
     }
 
     #[test]
     fn invalid_missing_at_symbol_email() {
-        let email = "gitgithub.com".to_string();
+        let email = "gitgithub.com";
         assert_err!(SubscriberEmail::parse(email));
     }
 
     #[test]
     fn invalid_missing_subject_email() {
-        let email = "@github.com".to_string();
+        let email = "@github.com";
         assert_err!(SubscriberEmail::parse(email));
     }
 }

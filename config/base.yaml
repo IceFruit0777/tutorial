@@ -1,4 +1,4 @@
-app:
+web:
   port: 8000
 database:
   host: "127.0.0.1"
@@ -6,3 +6,8 @@ database:
   username: "postgres"
   password: "password"
   db_name: "postgres"
+email_client:
+  base_url: "http://localhost"
+  sender: "test@mailsire.com"
+  authorization_token: "my-secret-token"
+  timeout_milliseconds: 10000

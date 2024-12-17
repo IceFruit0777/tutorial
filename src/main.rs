@@ -1,15 +1,18 @@
 use std::net::TcpListener;
 
-use tutorial::telemetry;
+use actix_web::web;
+use tutorial::{email_client::EmailCient, telemetry};
 
 #[tokio::main]
 async fn main() {
+    // 遥测初始化
     telemetry::init_subscriber("tutorial");
 
-    let config = tutorial::get_config();
-    let address = format!("{}:{}", config.app.host, config.app.port);
-    let listener = TcpListener::bind(address).expect("failed to bind web port.");
-    let pool = config.database.connect();
+    let config = tutorial::config::config();
+    let listener =
+        TcpListener::bind(config.web.server_address()).expect("failed to bind web port.");
+    let pool = web::Data::new(config.database.connect());
+    let email_client = web::Data::new(EmailCient::from_config(&config));
 
-    let _ = tutorial::run(listener, pool).await;
+    let _ = tutorial::run(listener, pool, email_client).await;
 }
