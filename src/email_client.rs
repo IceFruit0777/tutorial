@@ -48,21 +48,18 @@ impl EmailCient {
 
     pub async fn send(
         &self,
-        receiver: &str,
+        receiver: &SubscriberEmail,
         subject: &str,
-        content: &str,
+        text_body: &str,
+        html_body: &str,
     ) -> Result<(), reqwest::Error> {
-        let url = self
-            .base_url
-            .join("/email")
-            .expect("failed to join a url path.");
-        let receiver = SubscriberEmail::parse(receiver).unwrap();
+        let url = self.base_url.join("/email").unwrap();
         let body = EmailRequestBody {
             from: self.sender.as_ref(),
             to: receiver.as_ref(),
             subject,
-            text_body: content,
-            html_body: content,
+            text_body,
+            html_body,
         };
 
         self.client
@@ -148,10 +145,13 @@ mod tests {
             .await;
 
         let receiver: String = SafeEmail().fake();
+        let receiver = SubscriberEmail::parse(&receiver).unwrap();
         let subject: String = Sentence(1..2).fake();
         let content: String = Paragraph(1..10).fake();
 
-        email_client.send(&receiver, &subject, &content).await
+        email_client
+            .send(&receiver, &subject, &content, &content)
+            .await
     }
 
     #[tokio::test]

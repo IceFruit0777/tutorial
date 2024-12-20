@@ -8,6 +8,7 @@ impl SubscriberEmail {
         if s.validate_email() {
             Ok(Self(s.into()))
         } else {
+            tracing::error!("`{s}` is not a valid subscriber email.");
             Err(format!("`{s}` is not a valid subscriber email."))
         }
     }

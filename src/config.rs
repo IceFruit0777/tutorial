@@ -1,7 +1,9 @@
-use std::time::Duration;
-
 use secrecy::{ExposeSecret, SecretString};
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use serde_aux::field_attributes::deserialize_number_from_string;
+use sqlx::{
+    postgres::{PgConnectOptions, PgSslMode},
+    ConnectOptions,
+};
 
 #[derive(serde::Deserialize)]
 pub struct Config {
@@ -13,6 +15,7 @@ pub struct Config {
 #[derive(serde::Deserialize)]
 pub struct WebConfig {
     pub host: String,
+    #[serde(deserialize_with = "deserialize_number_from_string")]
     port: u16,
 }
 
@@ -25,39 +28,34 @@ impl WebConfig {
 #[derive(serde::Deserialize)]
 pub struct DBConfig {
     host: String,
+    #[serde(deserialize_with = "deserialize_number_from_string")]
     port: u16,
     username: String,
     password: SecretString,
-    db_name: String,
+    pub db_name: String,
+    require_ssl: bool,
 }
 
 impl DBConfig {
-    fn connect_str(&self) -> String {
-        format!(
-            "postgres://{}:{}@{}:{}/{}",
-            self.username,
-            self.password.expose_secret(),
-            self.host,
-            self.port,
-            self.db_name
-        )
+    pub fn without_db(&self) -> PgConnectOptions {
+        let ssl_mode = if self.require_ssl {
+            PgSslMode::Require
+        } else {
+            PgSslMode::Prefer
+        };
+        PgConnectOptions::new()
+            .username(&self.username)
+            .password(self.password.expose_secret())
+            .host(&self.host)
+            .port(self.port)
+            .ssl_mode(ssl_mode)
     }
 
-    pub fn connect_str_without_db(&self) -> String {
-        format!(
-            "postgres://{}:{}@{}:{}",
-            self.username,
-            self.password.expose_secret(),
-            self.host,
-            self.port
+    pub fn with_db(&self) -> PgConnectOptions {
+        PgConnectOptions::log_statements(
+            self.without_db().database(&self.db_name),
+            tracing::log::LevelFilter::Trace,
         )
-    }
-
-    pub fn connect(&self) -> PgPool {
-        PgPoolOptions::new()
-            .acquire_timeout(Duration::from_secs(5))
-            .connect_lazy(&self.connect_str())
-            .expect("failed to create postgres connection pool.")
     }
 }
 
@@ -117,6 +115,14 @@ pub fn config() -> Config {
         .add_source(config::File::from(config_dir.join("base.yaml")))
         // 加载当前环境配置文件
         .add_source(config::File::from(config_dir.join(env_filename)))
+        // 从环境变量中加载配置，获取动态配置或敏感信息
+        // Example:
+        //     `APP_WEB__PORT=8000` => `config.web.port=8000`
+        .add_source(
+            config::Environment::with_prefix("APP")
+                .prefix_separator("_")
+                .separator("__"),
+        )
         .build()
         .expect("failed to read config.")
         .try_deserialize::<Config>()

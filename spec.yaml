@@ -1,0 +1,42 @@
+name: tutorial
+region: fra
+services:
+  - name: tutorial
+    dockerfile_path: Dockerfile
+    source_dir: .
+    github:
+      branch: master
+      deploy_on_push: true
+      repo: IceFruit0777/tutorial
+    # DigitalOcean使用探针来确保应用程序健康
+    health_check:
+      http_path: /
+    http_port: 8000
+    # 生产环境的工作负载
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    # 所有传入的请求都会被转发到应用程序
+    routes:
+      - path: /
+    envs:
+      - key: APP_DATABASE__USERNAME
+        scope: RUN_TIME
+        value: ${postgres.USERNAME}
+      - key: APP_DATABASE__PASSWORD
+        scope: RUN_TIME
+        value: ${postgres.PASSWORD}
+      - key: APP_DATABASE__HOST
+        scope: RUN_TIME
+        value: ${postgres.HOST}
+      - key: APP_DATABASE__PORT
+        scope: RUN_TIME
+        value: ${postgres.PORT}
+      - key: APP_DATABASE__DB_NAME
+        scope: RUN_TIME
+        value: ${postgres.DB_NAME}
+databases:
+  # PG = postgres
+  - engine: PG
+    name: newsletter
+    version: "16"
+    production: false
