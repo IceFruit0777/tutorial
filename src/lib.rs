@@ -5,4 +5,5 @@ mod routes;
 mod startup;
 pub mod telemetry;
 
+pub use domain::SubscriberStatus;
 pub use startup::run;

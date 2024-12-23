@@ -2,11 +2,12 @@ use crate::helper::spawn_app;
 
 #[tokio::test]
 async fn health_check() {
-    let (address, _, _) = spawn_app().await;
+    let app = spawn_app().await;
     let client = reqwest::Client::new();
 
+    let url = app.web_base_url.join("/health_check").unwrap();
     let res = client
-        .get(&address)
+        .get(url)
         .send()
         .await
         .expect("failed to execute request.");

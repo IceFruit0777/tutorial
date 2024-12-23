@@ -10,7 +10,7 @@ services:
       repo: IceFruit0777/tutorial
     # DigitalOcean使用探针来确保应用程序健康
     health_check:
-      http_path: /
+      http_path: /health_check
     http_port: 8000
     # 生产环境的工作负载
     instance_count: 1
@@ -34,6 +34,21 @@ services:
       - key: APP_DATABASE__DB_NAME
         scope: RUN_TIME
         value: ${postgres.DB_NAME}
+
+      # `digital ocean`构建应用后生成的随机公网url
+      - key: APP_WEB__BASE_URL
+        scope: RUN_TIME
+        value: ${web.BASE_URL}
+
+      - key: APP_EMAIL_CLIENT__BASE_URL
+        scope: RUN_TIME
+        value: ${email_client.BASE_URL}
+      - key: APP_EMAIL_CLIENT__SENDER
+        scope: RUN_TIME
+        value: ${email_client.SENDER}
+      - key: APP_EMAIL_CLIENT__AUTHORIZATION_TOKEN
+        scope: RUN_TIME
+        value: ${email_client.AUTHORIZATION_TOKEN}
 databases:
   # PG = postgres
   - engine: PG

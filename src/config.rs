@@ -15,6 +15,7 @@ pub struct Config {
 #[derive(serde::Deserialize)]
 pub struct WebConfig {
     pub host: String,
+    pub base_url: String,
     #[serde(deserialize_with = "deserialize_number_from_string")]
     port: u16,
 }
