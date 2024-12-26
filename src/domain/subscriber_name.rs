@@ -11,7 +11,6 @@ impl SubscriberName {
         let contain_fb_chars = s.chars().any(|c| forbidden_characters.contains(&c));
 
         if is_empty || is_too_long || contain_fb_chars {
-            tracing::error!("`{s}` is not a valid subscriber name.");
             return Err(format!("`{s}` is not a valid subscriber name."));
         }
         Ok(Self(s.into()))

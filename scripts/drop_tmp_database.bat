@@ -9,7 +9,7 @@ set BIN_PATH=E:\software\PostgreSQL\17\bin
 for /f "delims=" %%i in (
     '%BIN_PATH%\psql -t -c "SELECT datname FROM pg_database WHERE datistemplate = false"'
 ) do (
-    if %%i neq postgres (
+    if "%%i" neq " postgres" (
         "%BIN_PATH%\dropdb" -h localhost -p 5432 -U postgres %%i
     )
 )

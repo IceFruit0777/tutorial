@@ -1,4 +1,7 @@
-use actix_web::{web, HttpResponse, Responder};
+use std::fmt::Debug;
+
+use actix_web::{http::StatusCode, web, HttpResponse, Responder, ResponseError};
+use anyhow::Context;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -9,34 +12,31 @@ pub struct Parameters {
     subscription_token: String,
 }
 
-#[tracing::instrument(name = "用户点击邮件中的确认订阅链接...", skip(parameters, pool))]
+#[tracing::instrument(
+    name = "用户点击邮件中的确认订阅链接...", 
+    skip(parameters, pool),
+    fields( %parameters.subscription_token )
+)]
 pub async fn subscription_confirm(
     parameters: web::Query<Parameters>,
     pool: web::Data<PgPool>,
-) -> impl Responder {
-    let subscriber_id = match get_subscriber_id(&pool, &parameters.subscription_token).await {
-        Ok(id) => id,
-        Err(_) => {
-            tracing::error!("`subscriber_id`查询失败.");
-            return HttpResponse::InternalServerError();
-        }
-    };
+) -> Result<impl Responder, SubscriptionConfirmError> {
+    let subscriber_id = get_subscriber_id(&pool, &parameters.subscription_token)
+        .await
+        .context(
+            "failed to query subscriber_id in table[subscription_token] with subscription_token.",
+        )?;
 
     match subscriber_id {
-        None => {
-            tracing::error!("订阅令牌不存在.");
-            HttpResponse::Unauthorized()
-        }
-        Some(id) => {
-            if confirm_subscriber(&pool, id).await.is_err() {
-                tracing::error!("用户状态更新失败.");
-                HttpResponse::InternalServerError()
-            } else {
-                tracing::info!("用户状态更新成功.");
-                HttpResponse::Ok()
-            }
-        }
+        None => Err(SubscriptionConfirmError::AuthorizationError(
+            "cannot find record in table[subscription_token] with subscription_token.".into(),
+        ))?,
+        Some(id) => confirm_subscriber(&pool, id)
+            .await
+            .context("failed to update subscriber's status in table[subscription] with id.")?,
     }
+
+    Ok(HttpResponse::Ok())
 }
 
 /// 根据`subscription_token`查询`subscriber_id`
@@ -52,11 +52,7 @@ async fn get_subscriber_id(
         subscription_token
     )
     .fetch_optional(pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("failed to execute query. {e:?}");
-        e
-    })?;
+    .await?;
 
     Ok(record.map(|r| r.subscriber_id))
 }
@@ -72,11 +68,30 @@ async fn confirm_subscriber(pool: &PgPool, subscriber_id: Uuid) -> Result<(), sq
         subscriber_id
     )
     .execute(pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("failed to execute query. {e}");
-        e
-    })?;
+    .await?;
 
     Ok(())
+}
+
+#[derive(thiserror::Error)]
+pub enum SubscriptionConfirmError {
+    #[error("failed to confirm subscription: {0}")]
+    AuthorizationError(String),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
+}
+
+impl ResponseError for SubscriptionConfirmError {
+    fn status_code(&self) -> actix_web::http::StatusCode {
+        match self {
+            SubscriptionConfirmError::AuthorizationError(_) => StatusCode::UNAUTHORIZED,
+            SubscriptionConfirmError::UnexpectedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl Debug for SubscriptionConfirmError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        super::error_chain_fmt(self, f)
+    }
 }

@@ -1,6 +1,9 @@
-use actix_web::{web, HttpResponse, Responder};
+use std::fmt::Debug;
+
+use actix_web::{http::StatusCode, web, HttpResponse, Responder, ResponseError};
+use anyhow::Context;
 use rand::distributions::{Alphanumeric, DistString};
-use sqlx::{types::chrono::Utc, PgPool, Postgres, Transaction};
+use sqlx::{types::chrono::Utc, PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::{config::Config, domain::Subscriber, email_client::EmailCient};
@@ -12,7 +15,7 @@ pub struct FormData {
 }
 
 #[tracing::instrument(
-    name = "在subscription表中插入一条数据...",
+    name = "新增订阅者",
     skip(form, pool, email_client, config),
     fields(
         %form.name,
@@ -24,68 +27,39 @@ pub async fn subscribe(
     pool: web::Data<PgPool>,
     email_client: web::Data<EmailCient>,
     config: web::Data<Config>,
-) -> impl Responder {
-    let subscriber: Subscriber = match form.0.try_into() {
-        Ok(value) => value,
-        Err(_) => return HttpResponse::BadRequest(),
-    };
-
+) -> Result<impl Responder, SubscribeError> {
+    let subscriber: Subscriber = form.0.try_into().map_err(SubscribeError::ValidationError)?;
     // 开启事务
-    let mut transaction = match pool.begin().await {
-        Ok(transaction) => transaction,
-        Err(e) => {
-            tracing::error!("事务开启失败. {e}");
-            return HttpResponse::InternalServerError();
-        }
-    };
-
-    let subscriber_id = match add_subscriber(&mut transaction, &subscriber).await {
-        Ok(subscriber_id) => {
-            tracing::info!("数据插入成功.");
-            subscriber_id
-        }
-        Err(_) => {
-            tracing::error!("数据插入失败.");
-            return HttpResponse::InternalServerError();
-        }
-    };
-
-    // 生成订阅令牌(用于发送确认订阅邮件)
+    let mut transaction = pool
+        .begin()
+        .await
+        .context("failed to open a transaction.")?;
+    // 新增订阅者
+    let subscriber_id = add_subscriber(transaction.as_mut(), &subscriber)
+        .await
+        .context("failed to add new subscriber in the database.")?;
+    // 生成订阅令牌
     let subscription_token = generate_subscription_token();
-    if store_token(&mut transaction, subscriber_id, &subscription_token)
+    // 储存订阅令牌
+    store_token(transaction.as_mut(), subscriber_id, &subscription_token)
         .await
-        .is_err()
-    {
-        tracing::error!("订阅令牌绑定失败.");
-        return HttpResponse::InternalServerError();
-    } else {
-        tracing::info!("订阅令牌绑定成功.");
-    }
-
+        .context("failed to store the confirmation token for a new subscriber.")?;
     // 提交事务
-    if transaction.commit().await.is_err() {
-        tracing::error!("事务提交失败.");
-        return HttpResponse::InternalServerError();
-    } else {
-        tracing::error!("事务提交成功.");
-    }
-
-    if send_confirm_email(&subscriber, &email_client, &config, &subscription_token)
+    transaction
+        .commit()
         .await
-        .is_err()
-    {
-        tracing::error!("邮件发送失败.");
-        return HttpResponse::InternalServerError();
-    } else {
-        tracing::info!("邮件发送成功.");
-    }
+        .context("failed to commit transaction.")?;
+    // 发送确认订阅邮件
+    send_confirm_email(&subscriber, &email_client, &config, &subscription_token)
+        .await
+        .context("failed to send a confimation email.")?;
 
-    HttpResponse::Ok()
+    Ok(HttpResponse::Ok())
 }
 
 /// 新增订阅者
 async fn add_subscriber(
-    transaction: &mut Transaction<'_, Postgres>,
+    executor: &mut PgConnection,
     subscriber: &Subscriber,
 ) -> Result<Uuid, sqlx::Error> {
     let subscriber_id = Uuid::new_v4();
@@ -101,19 +75,15 @@ async fn add_subscriber(
         Utc::now(),
         subscriber.status.as_str()
     )
-    .execute(&mut **transaction)
-    .await
-    .map_err(|e| {
-        tracing::error!("failed to execute query. {e}");
-        e
-    })?;
+    .execute(executor)
+    .await?;
 
     Ok(subscriber_id)
 }
 
 /// 储存订阅令牌
 async fn store_token(
-    transaction: &mut Transaction<'_, Postgres>,
+    executor: &mut PgConnection,
     subscriber_id: Uuid,
     subscription_token: &str,
 ) -> Result<(), sqlx::Error> {
@@ -125,12 +95,8 @@ async fn store_token(
         subscriber_id,
         subscription_token
     )
-    .execute(&mut **transaction)
-    .await
-    .map_err(|e| {
-        tracing::error!("failed to execute query. {e}");
-        e
-    })?;
+    .execute(executor)
+    .await?;
 
     Ok(())
 }
@@ -165,4 +131,27 @@ async fn send_confirm_email(
 /// 生成25位随机(a-z, A-Z and 0-9)的订阅令牌
 fn generate_subscription_token() -> String {
     Alphanumeric.sample_string(&mut rand::thread_rng(), 25)
+}
+
+#[derive(thiserror::Error)]
+pub enum SubscribeError {
+    #[error("failed to validate form data when add a new subscriber: {0}")]
+    ValidationError(String),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
+}
+
+impl ResponseError for SubscribeError {
+    fn status_code(&self) -> actix_web::http::StatusCode {
+        match self {
+            SubscribeError::ValidationError(_) => StatusCode::BAD_REQUEST,
+            SubscribeError::UnexpectedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl Debug for SubscribeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        super::error_chain_fmt(self, f)
+    }
 }

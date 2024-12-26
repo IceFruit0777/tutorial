@@ -33,9 +33,8 @@ async fn valid_subscribe() {
 }
 
 #[tokio::test]
-async fn invalid_subscribe() {
+async fn illegal_fields() {
     let app = spawn_app().await;
-
     let datas = [
         ("name=&email=git%40github01.com", "name is empty."),
         ("name=IceFruit%20huang&email=", "email is empty."),
@@ -44,4 +43,34 @@ async fn invalid_subscribe() {
         let res = app.subscribe_request(body).await;
         assert_eq!(400, res.status().as_u16(), "{payload}");
     }
+}
+
+#[tokio::test]
+async fn add_subscriber_error() {
+    let app = spawn_app().await;
+    let body = "name=IceFruit%20huang&email=git%40github.com";
+
+    // sabotage the database
+    sqlx::query!("ALTER TABLE subscription DROP COLUMN name;")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+
+    let res = app.subscribe_request(body).await;
+    assert_eq!(500, res.status().as_u16());
+}
+
+#[tokio::test]
+async fn store_token_error() {
+    let app = spawn_app().await;
+    let body = "name=IceFruit%20huang&email=git%40github.com";
+
+    // sabotage the database
+    sqlx::query!("ALTER TABLE subscription_token DROP COLUMN subscription_token;")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+
+    let res = app.subscribe_request(body).await;
+    assert_eq!(500, res.status().as_u16());
 }
