@@ -15,15 +15,12 @@ pub struct Config {
 #[derive(serde::Deserialize)]
 pub struct WebConfig {
     pub host: String,
-    pub base_url: String,
     #[serde(deserialize_with = "deserialize_number_from_string")]
-    port: u16,
-}
-
-impl WebConfig {
-    pub fn server_address(&self) -> String {
-        format!("{}:{}", &self.host, &self.port)
-    }
+    pub port: u16,
+    // Example:
+    // 本地环境: http://127.0.0.1:8000
+    // 生产环境: https://pro.tutorial.com
+    pub base_url: String,
 }
 
 #[derive(serde::Deserialize)]

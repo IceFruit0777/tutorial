@@ -1,6 +1,8 @@
+mod newsletter;
 mod subscription;
 mod subscription_confirm;
 
+pub use newsletter::*;
 pub use subscription::*;
 pub use subscription_confirm::*;
 

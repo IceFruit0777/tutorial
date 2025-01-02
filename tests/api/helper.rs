@@ -2,6 +2,7 @@ use std::net::TcpListener;
 
 use once_cell::sync::Lazy;
 use reqwest::{Response, Url};
+use serde_json::Value;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use tutorial::{config::Config, telemetry};
 use uuid::Uuid;
@@ -17,20 +18,37 @@ pub struct TestApp {
 
 impl TestApp {
     /// 发送订阅请求
-    pub async fn subscribe_request(&self, body: &'static str) -> Response {
+    pub async fn subscribe_request(&self, body: &str) -> Response {
         let client = reqwest::Client::new();
         client
             .post(self.web_base_url.join("/subscribe").unwrap())
             .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(body)
+            .body(body.to_string())
+            .send()
+            .await
+            .expect("failed to execute request.")
+    }
+
+    /// 发送发布资讯请求
+    pub async fn publish_request(&self, body: &Value) -> Response {
+        let client = reqwest::Client::new();
+        client
+            .post(self.web_base_url.join("/newsletter/publish").unwrap())
+            .json(body)
             .send()
             .await
             .expect("failed to execute request.")
     }
 
     /// 从发送订阅确认邮件的请求中提取确认链接
-    pub async fn get_confirmation_links(&self) -> Url {
-        let email_request = &self.email_server.received_requests().await.unwrap()[0];
+    pub async fn get_confirmation_link(&self) -> Url {
+        let email_request = &self
+            .email_server
+            .received_requests()
+            .await
+            .unwrap()
+            .pop()
+            .unwrap();
         let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
         let get_link = |s: &str| {
             let links: Vec<_> = linkify::LinkFinder::new()

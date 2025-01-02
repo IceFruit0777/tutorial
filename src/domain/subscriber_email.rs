@@ -47,7 +47,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_empty_email() {
+    fn email_is_empty() {
         let email = "";
         assert_err!(SubscriberEmail::parse(email));
 
@@ -56,13 +56,13 @@ mod tests {
     }
 
     #[test]
-    fn invalid_missing_at_symbol_email() {
+    fn missing_at_symbol() {
         let email = "gitgithub.com";
         assert_err!(SubscriberEmail::parse(email));
     }
 
     #[test]
-    fn invalid_missing_subject_email() {
+    fn missing_subject() {
         let email = "@github.com";
         assert_err!(SubscriberEmail::parse(email));
     }

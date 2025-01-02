@@ -17,7 +17,7 @@ async fn valid_confirm() {
 
     let body = "name=IceFruit%20huang&email=git%40github.com";
     app.subscribe_request(body).await;
-    let confirm_link = app.get_confirmation_links().await;
+    let confirm_link = app.get_confirmation_link().await;
 
     let res = reqwest::get(confirm_link).await.unwrap();
     assert_eq!(200, res.status().as_u16());
@@ -28,7 +28,7 @@ async fn query_subscriber_id_error() {
     let app = spawn_app().await;
     let body = "name=IceFruit%20huang&email=git%40github.com";
     app.subscribe_request(body).await;
-    let confirm_link = app.get_confirmation_links().await;
+    let confirm_link = app.get_confirmation_link().await;
 
     // sabotage the database
     sqlx::query!("ALTER TABLE subscription_token DROP COLUMN subscription_token;")
@@ -58,7 +58,7 @@ async fn update_subscriber_status_error() {
     let app = spawn_app().await;
     let body = "name=IceFruit%20huang&email=git%40github.com";
     app.subscribe_request(body).await;
-    let confirm_link = app.get_confirmation_links().await;
+    let confirm_link = app.get_confirmation_link().await;
 
     // sabotage the database
     sqlx::query!("ALTER TABLE subscription DROP COLUMN status;")

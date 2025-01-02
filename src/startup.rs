@@ -19,6 +19,7 @@ pub fn run(config: Config, listener: TcpListener, pool: PgPool) -> Server {
             .app_data(email_client.clone())
             .route("/health_check", web::get().to(routes::health_check))
             .route("/subscribe", web::post().to(routes::subscribe))
+            .route("/newsletter/publish", web::post().to(routes::publish))
             .route(
                 "/subscription/confirm",
                 web::get().to(routes::subscription_confirm),

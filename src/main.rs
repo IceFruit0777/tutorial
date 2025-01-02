@@ -9,8 +9,8 @@ async fn main() {
     telemetry::init_subscriber("tutorial");
 
     let config = tutorial::config::config();
-    let listener =
-        TcpListener::bind(config.web.server_address()).expect("failed to bind web port.");
+    let listener = TcpListener::bind(format!("{}:{}", &config.web.host, &config.web.port))
+        .expect("failed to bind web port.");
     let pool = PgPoolOptions::new()
         .acquire_timeout(Duration::from_secs(5))
         .connect_lazy_with(config.database.with_db());

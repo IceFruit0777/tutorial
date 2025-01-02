@@ -30,15 +30,6 @@ mod tests {
     use crate::domain::SubscriberName;
 
     #[test]
-    fn invalid_empty_name() {
-        let name = "";
-        assert_err!(SubscriberName::parse(name));
-
-        let name = " ";
-        assert_err!(SubscriberName::parse(name));
-    }
-
-    #[test]
     fn valid_max_length_name() {
         let name = "a".repeat(256);
         assert_ok!(SubscriberName::parse(&name));
@@ -51,7 +42,16 @@ mod tests {
     }
 
     #[test]
-    fn invalid_length_name() {
+    fn name_is_empty() {
+        let name = "";
+        assert_err!(SubscriberName::parse(name));
+
+        let name = " ";
+        assert_err!(SubscriberName::parse(name));
+    }
+
+    #[test]
+    fn name_is_too_long() {
         let name = "a".repeat(257);
         assert_err!(SubscriberName::parse(&name));
 
@@ -63,7 +63,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_forbidden_characters() {
+    fn name_contains_forbidden_characters() {
         let forbidden_characters = ['/', '(', ')', '{', '}', '"', '<', '>', '\\'];
         for c in forbidden_characters.iter() {
             assert_err!(SubscriberName::parse(&c.to_string()));
