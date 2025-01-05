@@ -1,5 +1,6 @@
 use std::net::TcpListener;
 
+use argon2::{password_hash::SaltString, Algorithm, Argon2, Params, PasswordHasher, Version};
 use once_cell::sync::Lazy;
 use reqwest::{Response, Url};
 use serde_json::Value;
@@ -14,13 +15,13 @@ pub struct TestApp {
     pub web_base_url: Url,
     pub pool: PgPool,
     pub email_server: MockServer,
+    pub test_user: TestUser,
 }
 
 impl TestApp {
     /// 发送订阅请求
     pub async fn subscribe_request(&self, body: &str) -> Response {
-        let client = reqwest::Client::new();
-        client
+        reqwest::Client::new()
             .post(self.web_base_url.join("/subscribe").unwrap())
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body.to_string())
@@ -31,9 +32,9 @@ impl TestApp {
 
     /// 发送发布资讯请求
     pub async fn publish_request(&self, body: &Value) -> Response {
-        let client = reqwest::Client::new();
-        client
+        reqwest::Client::new()
             .post(self.web_base_url.join("/newsletter/publish").unwrap())
+            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
             .json(body)
             .send()
             .await
@@ -70,6 +71,47 @@ impl TestApp {
     }
 }
 
+pub struct TestUser {
+    user_id: Uuid,
+    pub username: String,
+    pub password: String,
+}
+
+impl TestUser {
+    fn generate() -> Self {
+        Self {
+            user_id: Uuid::new_v4(),
+            username: Uuid::new_v4().to_string(),
+            password: Uuid::new_v4().to_string(),
+        }
+    }
+
+    async fn store(&self, pool: &PgPool) {
+        let salt = SaltString::generate(&mut rand::thread_rng());
+        let password_hash = Argon2::new(
+            Algorithm::Argon2id,
+            Version::V0x13,
+            Params::new(65536, 2, 1, None).unwrap(),
+        )
+        .hash_password(&self.password.as_bytes(), &salt)
+        .unwrap()
+        .to_string();
+
+        sqlx::query!(
+            r#"
+            INSERT INTO users (user_id, username, password_hash)
+            VALUES ($1, $2, $3)
+            "#,
+            &self.user_id,
+            &self.username,
+            password_hash,
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+}
+
 pub async fn spawn_app() -> TestApp {
     Lazy::force(&TRACING);
 
@@ -91,11 +133,17 @@ pub async fn spawn_app() -> TestApp {
     tokio::spawn(tutorial::run(config, listener, pool.clone()));
 
     let web_base_url = Url::parse(&web_base_url).unwrap();
-    TestApp {
+    let app = TestApp {
         web_base_url,
         pool,
         email_server,
-    }
+        test_user: TestUser::generate(),
+    };
+
+    // 添加随机测试管理员
+    app.test_user.store(&app.pool).await;
+
+    app
 }
 
 async fn connect_random_database(config: &mut Config) -> PgPool {

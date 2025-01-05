@@ -113,7 +113,7 @@ jobs:
         with:
           components: clippy
       - name: Linting
-        run: cargo clippy -- -D warnings -A clippy::async_yields_async
+        run: cargo clippy -- -D warnings
 
   coverage:
     name: Code coverage

@@ -1,3 +1,4 @@
+use uuid::Uuid;
 use wiremock::{
     matchers::{method, path},
     Mock, ResponseTemplate,
@@ -50,6 +51,14 @@ async fn create_unvalid_subscriber(app: &TestApp) {
         .unwrap();
 }
 
+fn newsletter() -> serde_json::Value {
+    serde_json::json!({
+        "subject": "Publish Newsletter Test",
+        "text_body": "This is someone called plain text.",
+        "html_body": "<p>This is someone called html.</p>"
+    })
+}
+
 #[tokio::test]
 async fn valid_publish() {
     let app = spawn_app().await;
@@ -64,12 +73,70 @@ async fn valid_publish() {
         .mount(&app.email_server)
         .await;
 
-    let newsletter = serde_json::json!({
-        "subject": "Publish Newsletter Test",
-        "text_body": "This is someone called plain text.",
-        "html_body": "<p>This is someone called html.</p>"
-    });
-    let res = app.publish_request(&newsletter).await;
+    let res = app.publish_request(&newsletter()).await;
 
     assert_eq!(200, res.status().as_u16());
+}
+
+#[tokio::test]
+async fn request_header_missing_authorization() {
+    let app = spawn_app().await;
+
+    let res = reqwest::Client::new()
+        .post(app.web_base_url.join("/newsletter/publish").unwrap())
+        .json(&newsletter())
+        .send()
+        .await
+        .expect("failed to execute request.");
+
+    assert_eq!(401, res.status().as_u16());
+    assert_eq!(
+        r#"Basic realm="publish""#,
+        res.headers()["WWW-Authenticate"]
+    );
+}
+
+#[tokio::test]
+async fn user_is_not_exist() {
+    let app = spawn_app().await;
+    // 随机凭证
+    let username = Uuid::new_v4().to_string();
+    let password = Uuid::new_v4().to_string();
+
+    let res = reqwest::Client::new()
+        .post(app.web_base_url.join("/newsletter/publish").unwrap())
+        .basic_auth(username, Some(password))
+        .json(&newsletter())
+        .send()
+        .await
+        .expect("failed to execute request.");
+
+    assert_eq!(401, res.status().as_u16());
+    assert_eq!(
+        r#"Basic realm="publish""#,
+        res.headers()["WWW-Authenticate"]
+    );
+}
+
+#[tokio::test]
+async fn invalid_password() {
+    let app = spawn_app().await;
+    let username = &app.test_user.username;
+    // 随机密码
+    let password = Uuid::new_v4().to_string();
+    assert_ne!(password, app.test_user.password);
+
+    let res = reqwest::Client::new()
+        .post(app.web_base_url.join("/newsletter/publish").unwrap())
+        .basic_auth(username, Some(password))
+        .json(&newsletter())
+        .send()
+        .await
+        .expect("failed to execute request.");
+
+    assert_eq!(401, res.status().as_u16());
+    assert_eq!(
+        r#"Basic realm="publish""#,
+        res.headers()["WWW-Authenticate"]
+    );
 }
