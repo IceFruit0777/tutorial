@@ -1,6 +1,6 @@
 use std::net::TcpListener;
 
-use argon2::{password_hash::SaltString, Algorithm, Argon2, Params, PasswordHasher, Version};
+use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use once_cell::sync::Lazy;
 use reqwest::{Response, Url};
 use serde_json::Value;
@@ -16,29 +16,110 @@ pub struct TestApp {
     pub pool: PgPool,
     pub email_server: MockServer,
     pub test_user: TestUser,
+    pub api_client: reqwest::Client,
 }
 
 impl TestApp {
-    /// 发送订阅请求
-    pub async fn subscribe_request(&self, body: &str) -> Response {
-        reqwest::Client::new()
+    pub async fn post_subscribe(&self, body: &str) -> Response {
+        self.api_client
             .post(self.web_base_url.join("/subscribe").unwrap())
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body.to_string())
             .send()
             .await
-            .expect("failed to execute request.")
+            .unwrap()
     }
 
-    /// 发送发布资讯请求
-    pub async fn publish_request(&self, body: &Value) -> Response {
-        reqwest::Client::new()
-            .post(self.web_base_url.join("/newsletter/publish").unwrap())
-            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
-            .json(body)
+    pub async fn post_login(&self, body: &Value) -> Response {
+        self.api_client
+            .post(self.web_base_url.join("/login").unwrap())
+            .form(body)
             .send()
             .await
-            .expect("failed to execute request.")
+            .unwrap()
+    }
+
+    pub async fn post_login_with_valid_user(&self) -> Response {
+        let credential = serde_json::json!({
+            "username": &self.test_user.username,
+            "password": &self.test_user.password,
+        });
+        self.api_client
+            .post(self.web_base_url.join("/login").unwrap())
+            .form(&credential)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    pub async fn get_login_html(&self) -> String {
+        self.api_client
+            .get(self.web_base_url.join("/login").unwrap())
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap()
+    }
+
+    pub async fn post_logout(&self) -> Response {
+        self.api_client
+            .post(self.web_base_url.join("/admin/logout").unwrap())
+            .send()
+            .await
+            .unwrap()
+    }
+
+    pub async fn get_admin_dashboard(&self) -> reqwest::Response {
+        self.api_client
+            .get(self.web_base_url.join("/admin/dashboard").unwrap())
+            .send()
+            .await
+            .unwrap()
+    }
+
+    pub async fn get_admin_dashboard_html(&self) -> String {
+        self.get_admin_dashboard().await.text().await.unwrap()
+    }
+
+    pub async fn get_change_password(&self) -> reqwest::Response {
+        self.api_client
+            .get(self.web_base_url.join("/admin/password").unwrap())
+            .send()
+            .await
+            .unwrap()
+    }
+
+    pub async fn get_change_password_html(&self) -> String {
+        self.get_change_password().await.text().await.unwrap()
+    }
+
+    pub async fn post_change_password(&self, body: &Value) -> Response {
+        self.api_client
+            .post(self.web_base_url.join("/admin/password").unwrap())
+            .form(body)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    pub async fn post_publish(&self, body: &Value) -> Response {
+        self.api_client
+            .post(self.web_base_url.join("/admin/publish").unwrap())
+            .form(&body)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    pub async fn post_publish_with_default_issue(&self) -> Response {
+        let issue = serde_json::json!({
+            "subject": "Publish Newsletter Test",
+            "text_body": "This is someone called plain text.",
+            "html_body": "<p>This is someone called html.</p>"
+        });
+        self.post_publish(&issue).await
     }
 
     /// 从发送订阅确认邮件的请求中提取确认链接
@@ -88,14 +169,10 @@ impl TestUser {
 
     async fn store(&self, pool: &PgPool) {
         let salt = SaltString::generate(&mut rand::thread_rng());
-        let password_hash = Argon2::new(
-            Algorithm::Argon2id,
-            Version::V0x13,
-            Params::new(65536, 2, 1, None).unwrap(),
-        )
-        .hash_password(&self.password.as_bytes(), &salt)
-        .unwrap()
-        .to_string();
+        let password_hash = Argon2::default()
+            .hash_password(&self.password.as_bytes(), &salt)
+            .unwrap()
+            .to_string();
 
         sqlx::query!(
             r#"
@@ -130,14 +207,20 @@ pub async fn spawn_app() -> TestApp {
     let web_base_url = format!("http://{}:{}", &config.web.host, &port);
     config.web.base_url = web_base_url.clone();
 
-    tokio::spawn(tutorial::run(config, listener, pool.clone()));
+    tokio::spawn(tutorial::run(config, listener, pool.clone()).await.unwrap());
 
     let web_base_url = Url::parse(&web_base_url).unwrap();
+    let api_client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .cookie_store(true)
+        .build()
+        .unwrap();
     let app = TestApp {
         web_base_url,
         pool,
         email_server,
         test_user: TestUser::generate(),
+        api_client,
     };
 
     // 添加随机测试管理员
@@ -169,4 +252,9 @@ async fn connect_random_database(config: &mut Config) -> PgPool {
         .expect("failed to migrate database.");
 
     pool
+}
+
+pub fn assert_is_redirect_to(res: &Response, redirect: &str) {
+    assert_eq!(303, res.status().as_u16());
+    assert_eq!(redirect, res.headers().get("Location").unwrap());
 }

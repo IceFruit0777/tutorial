@@ -10,6 +10,7 @@ pub struct Config {
     pub web: WebConfig,
     pub database: DBConfig,
     pub email_client: EmailCientConfig,
+    pub redis_uri: SecretString,
 }
 
 #[derive(serde::Deserialize)]
@@ -21,6 +22,7 @@ pub struct WebConfig {
     // 本地环境: http://127.0.0.1:8000
     // 生产环境: https://pro.tutorial.com
     pub base_url: String,
+    pub hmac_secret: SecretString,
 }
 
 #[derive(serde::Deserialize)]

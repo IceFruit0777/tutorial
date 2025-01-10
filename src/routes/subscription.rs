@@ -6,7 +6,7 @@ use rand::distributions::{Alphanumeric, DistString};
 use sqlx::{types::chrono::Utc, PgConnection, PgPool};
 use uuid::Uuid;
 
-use crate::{config::Config, domain::Subscriber, email_client::EmailCient};
+use crate::{config::Config, domain::Subscriber, email_client::EmailCient, util::error_chain_fmt};
 
 #[derive(serde::Deserialize)]
 pub struct FormData {
@@ -152,6 +152,6 @@ impl ResponseError for SubscribeError {
 
 impl Debug for SubscribeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        super::error_chain_fmt(self, f)
+        error_chain_fmt(self, f)
     }
 }

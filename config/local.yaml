@@ -1,14 +1,4 @@
 web:
   host: 127.0.0.1
-  base_url: ""
 database:
-  host: "127.0.0.1"
-  port: 5432
-  username: "postgres"
-  password: "password"
-  db_name: "postgres"
   require_ssl: false
-email_client:
-  base_url: "http://test.com"
-  sender: "test@mailsire.com"
-  authorization_token: "my-secret-token"

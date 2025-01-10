@@ -4,7 +4,7 @@ use sqlx::postgres::PgPoolOptions;
 use tutorial::telemetry;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     // 遥测初始化
     telemetry::init_subscriber("tutorial");
 
@@ -15,5 +15,7 @@ async fn main() {
         .acquire_timeout(Duration::from_secs(5))
         .connect_lazy_with(config.database.with_db());
 
-    let _ = tutorial::run(config, listener, pool).await;
+    let _ = tutorial::run(config, listener, pool).await?.await;
+
+    Ok(())
 }

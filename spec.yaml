@@ -39,6 +39,9 @@ services:
       - key: APP_WEB__BASE_URL
         scope: RUN_TIME
         value: ${web.BASE_URL}
+      - key: APP_WEB__HMAC_SECRET
+        scope: RUN_TIME
+        value: ${web.HMAC_SECRET}
 
       - key: APP_EMAIL_CLIENT__BASE_URL
         scope: RUN_TIME
@@ -49,6 +52,10 @@ services:
       - key: APP_EMAIL_CLIENT__AUTHORIZATION_TOKEN
         scope: RUN_TIME
         value: ${email_client.AUTHORIZATION_TOKEN}
+
+      - key: APP_REDIS_URI
+        scope: RUN_TIME
+        value: ${REDIS_URI}
 databases:
   # PG = postgres
   - engine: PG

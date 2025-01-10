@@ -1,4 +1,16 @@
 web:
   port: 8000
+  base_url: "http://127.0.0.1"
+  hmac_secret: "super-long-and-secret-random-key-needed-to-verify-message-integrity"
+database:
+  host: "127.0.0.1"
+  port: 5432
+  username: "postgres"
+  password: "password"
+  db_name: "postgres"
 email_client:
+  base_url: "http://test.com"
+  sender: "test@mailsire.com"
+  authorization_token: "my-secret-token"
   timeout_milliseconds: 10000
+redis_uri: "redis://127.0.0.1:6379"

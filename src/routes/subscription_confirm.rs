@@ -5,7 +5,7 @@ use anyhow::Context;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::SubscriberStatus;
+use crate::{util::error_chain_fmt, SubscriberStatus};
 
 #[derive(serde::Deserialize)]
 pub struct Parameters {
@@ -92,6 +92,6 @@ impl ResponseError for SubscriptionConfirmError {
 
 impl Debug for SubscriptionConfirmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        super::error_chain_fmt(self, f)
+        error_chain_fmt(self, f)
     }
 }

@@ -16,7 +16,7 @@ async fn valid_confirm() {
         .await;
 
     let body = "name=IceFruit%20huang&email=git%40github.com";
-    app.subscribe_request(body).await;
+    app.post_subscribe(body).await;
     let confirm_link = app.get_confirmation_link().await;
 
     let res = reqwest::get(confirm_link).await.unwrap();
@@ -27,7 +27,7 @@ async fn valid_confirm() {
 async fn query_subscriber_id_error() {
     let app = spawn_app().await;
     let body = "name=IceFruit%20huang&email=git%40github.com";
-    app.subscribe_request(body).await;
+    app.post_subscribe(body).await;
     let confirm_link = app.get_confirmation_link().await;
 
     // sabotage the database
@@ -57,7 +57,7 @@ async fn subscription_token_not_exist() {
 async fn update_subscriber_status_error() {
     let app = spawn_app().await;
     let body = "name=IceFruit%20huang&email=git%40github.com";
-    app.subscribe_request(body).await;
+    app.post_subscribe(body).await;
     let confirm_link = app.get_confirmation_link().await;
 
     // sabotage the database

@@ -17,7 +17,7 @@ async fn valid_subscribe() {
         .await;
 
     let body = "name=IceFruit%20huang&email=git%40github.com";
-    let res = app.subscribe_request(body).await;
+    let res = app.post_subscribe(body).await;
     assert_eq!(200, res.status().as_u16());
 
     let record = sqlx::query!("select name, email, status from subscription")
@@ -40,7 +40,7 @@ async fn illegal_fields() {
         ("name=IceFruit%20huang&email=", "email is empty."),
     ];
     for (body, payload) in datas {
-        let res = app.subscribe_request(body).await;
+        let res = app.post_subscribe(body).await;
         assert_eq!(400, res.status().as_u16(), "{payload}");
     }
 }
@@ -56,7 +56,7 @@ async fn add_subscriber_error() {
         .await
         .unwrap();
 
-    let res = app.subscribe_request(body).await;
+    let res = app.post_subscribe(body).await;
     assert_eq!(500, res.status().as_u16());
 }
 
@@ -71,6 +71,6 @@ async fn store_token_error() {
         .await
         .unwrap();
 
-    let res = app.subscribe_request(body).await;
+    let res = app.post_subscribe(body).await;
     assert_eq!(500, res.status().as_u16());
 }
