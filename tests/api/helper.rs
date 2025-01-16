@@ -1,11 +1,14 @@
-use std::net::TcpListener;
+use std::{net::TcpListener, time::Duration};
 
+use actix_web::web;
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use once_cell::sync::Lazy;
 use reqwest::{Response, Url};
 use serde_json::Value;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
-use tutorial::{config::Config, telemetry};
+use tutorial::{
+    config::Config, email_client::EmailCient, telemetry, try_execute_task, ExecutionOutcome,
+};
 use uuid::Uuid;
 use wiremock::MockServer;
 
@@ -13,8 +16,9 @@ static TRACING: Lazy<()> = Lazy::new(|| telemetry::init_subscriber("test"));
 
 pub struct TestApp {
     pub web_base_url: Url,
-    pub pool: PgPool,
+    pub pool: web::Data<PgPool>,
     pub email_server: MockServer,
+    pub email_client: web::Data<EmailCient>,
     pub test_user: TestUser,
     pub api_client: reqwest::Client,
 }
@@ -34,19 +38,6 @@ impl TestApp {
         self.api_client
             .post(self.web_base_url.join("/login").unwrap())
             .form(body)
-            .send()
-            .await
-            .unwrap()
-    }
-
-    pub async fn post_login_with_valid_user(&self) -> Response {
-        let credential = serde_json::json!({
-            "username": &self.test_user.username,
-            "password": &self.test_user.password,
-        });
-        self.api_client
-            .post(self.web_base_url.join("/login").unwrap())
-            .form(&credential)
             .send()
             .await
             .unwrap()
@@ -113,11 +104,17 @@ impl TestApp {
             .unwrap()
     }
 
-    pub async fn post_publish_with_default_issue(&self) -> Response {
+    pub async fn post_publish_with_default_issue(
+        &self,
+        idempotency_key: Option<String>,
+    ) -> Response {
+        let idempotency_key = idempotency_key.unwrap_or_else(|| Uuid::new_v4().to_string());
         let issue = serde_json::json!({
             "subject": "Publish Newsletter Test",
             "text_body": "This is someone called plain text.",
-            "html_body": "<p>This is someone called html.</p>"
+            "html_body": "<p>This is someone called html.</p>",
+            // 幂等键
+            "idempotency_key": idempotency_key,
         });
         self.post_publish(&issue).await
     }
@@ -150,6 +147,16 @@ impl TestApp {
 
         text_link
     }
+
+    pub async fn dispatch_all_pending_emails(&self) {
+        loop {
+            match try_execute_task(&self.pool, &self.email_client).await {
+                Ok(ExecutionOutcome::EmptyQueue) => break,
+                Err(_) => tokio::time::sleep(Duration::from_secs(1)).await,
+                Ok(ExecutionOutcome::TaskCompleted) => {}
+            }
+        }
+    }
 }
 
 pub struct TestUser {
@@ -159,6 +166,14 @@ pub struct TestUser {
 }
 
 impl TestUser {
+    pub async fn login(&self, app: &TestApp) -> Response {
+        app.post_login(&serde_json::json!({
+            "username": &self.username,
+            "password": &self.password,
+        }))
+        .await
+    }
+
     fn generate() -> Self {
         Self {
             user_id: Uuid::new_v4(),
@@ -193,33 +208,58 @@ pub async fn spawn_app() -> TestApp {
     Lazy::force(&TRACING);
 
     let mut config = tutorial::config::config();
+
+    // 绑定随机端口
     let address = format!("{}:{}", &config.web.host, 0);
     let listener = TcpListener::bind(&address).expect("failed to bind web port.");
-    let pool = connect_random_database(&mut config).await;
-
-    // 模拟邮件服务器
-    let email_server = MockServer::start().await;
-    config.email_client.base_url = email_server.uri();
-
-    // 获取绑定的随机端口
+    // 获取绑定的随机端口，如：56535
     let port = listener.local_addr().unwrap().port();
-    // 设置web base url
+    // 设置web base url，如：http://127.0.0.1:56535
     let web_base_url = format!("http://{}:{}", &config.web.host, &port);
     config.web.base_url = web_base_url.clone();
 
-    tokio::spawn(tutorial::run(config, listener, pool.clone()).await.unwrap());
+    // 获取随机生成的数据库的连接池
+    let pool = web::Data::new(connect_random_database(&mut config).await);
+
+    // 模拟邮件服务器
+    // 集成测试的邮件简报不会发送到生产环境的邮件API
+    // 而是发送到模拟服务器
+    // 通过模拟服务器返回各种响应结果
+    let email_server = MockServer::start().await;
+    config.email_client.base_url = email_server.uri();
+
+    // 邮件客户端
+    let email_client = web::Data::new(EmailCient::from_config(&config));
+
+    // 启动web工作线程
+    tokio::spawn(
+        tutorial::web_run(
+            web::Data::new(config),
+            listener,
+            pool.clone(),
+            email_client.clone(),
+        )
+        .await
+        .unwrap(),
+    );
 
     let web_base_url = Url::parse(&web_base_url).unwrap();
+    // API客户端模拟对web服务的调用
     let api_client = reqwest::Client::builder()
+        // 设置不自动重定向
         .redirect(reqwest::redirect::Policy::none())
         .cookie_store(true)
         .build()
         .unwrap();
+    // 测试管理员
+    let test_user = TestUser::generate();
+
     let app = TestApp {
         web_base_url,
         pool,
         email_server,
-        test_user: TestUser::generate(),
+        email_client,
+        test_user,
         api_client,
     };
 

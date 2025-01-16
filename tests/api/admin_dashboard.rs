@@ -30,11 +30,7 @@ async fn sign_up_clear_session_state() {
     let app = spawn_app().await;
 
     // 1. sign in
-    app.post_login(&serde_json::json!({
-        "username": &app.test_user.username,
-        "password": &app.test_user.password,
-    }))
-    .await;
+    app.test_user.login(&app).await;
 
     // 2. sign up
     let res = app.post_logout().await;

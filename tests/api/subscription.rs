@@ -21,7 +21,7 @@ async fn valid_subscribe() {
     assert_eq!(200, res.status().as_u16());
 
     let record = sqlx::query!("select name, email, status from subscription")
-        .fetch_one(&app.pool)
+        .fetch_one(app.pool.get_ref())
         .await
         .expect("failed to execute query.");
     assert_eq!("IceFruit huang", record.name);
@@ -52,7 +52,7 @@ async fn add_subscriber_error() {
 
     // sabotage the database
     sqlx::query!("ALTER TABLE subscription DROP COLUMN name;")
-        .execute(&app.pool)
+        .execute(app.pool.get_ref())
         .await
         .unwrap();
 
@@ -67,7 +67,7 @@ async fn store_token_error() {
 
     // sabotage the database
     sqlx::query!("ALTER TABLE subscription_token DROP COLUMN subscription_token;")
-        .execute(&app.pool)
+        .execute(app.pool.get_ref())
         .await
         .unwrap();
 

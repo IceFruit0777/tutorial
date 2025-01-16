@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "TRUNCATE TABLE newsletter_issue",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "c7dd6ab1c61dbfff0b9107b9ec9cac6b641f603e647bc94e63b27edf43ebc2a7"
+}

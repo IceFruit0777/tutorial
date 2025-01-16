@@ -19,7 +19,7 @@ pub struct FormData {
 }
 
 #[tracing::instrument(
-    skip(form, pool, session),
+    skip_all,
     fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
 )]
 pub async fn login(

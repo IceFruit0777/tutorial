@@ -32,7 +32,7 @@ async fn query_subscriber_id_error() {
 
     // sabotage the database
     sqlx::query!("ALTER TABLE subscription_token DROP COLUMN subscription_token;")
-        .execute(&app.pool)
+        .execute(app.pool.get_ref())
         .await
         .unwrap();
 
@@ -62,7 +62,7 @@ async fn update_subscriber_status_error() {
 
     // sabotage the database
     sqlx::query!("ALTER TABLE subscription DROP COLUMN status;")
-        .execute(&app.pool)
+        .execute(app.pool.get_ref())
         .await
         .unwrap();
 

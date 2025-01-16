@@ -46,13 +46,17 @@ impl EmailCient {
         )
     }
 
+    #[tracing::instrument(
+        name = "sending email",
+        skip_all,
+    )]
     pub async fn send(
         &self,
         receiver: &SubscriberEmail,
         subject: &str,
         text_body: &str,
         html_body: &str,
-    ) -> Result<(), reqwest::Error> {
+    ) -> reqwest::Result<()> {
         let url = self.base_url.join("/email").unwrap();
         let body = EmailRequestBody {
             from: self.sender.as_ref(),

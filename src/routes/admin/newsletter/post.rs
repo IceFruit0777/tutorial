@@ -1,15 +1,12 @@
-use std::fmt::Debug;
-
-use actix_web::{web, HttpRequest, Responder};
+use actix_web::{web, Responder};
 use actix_web_flash_messages::FlashMessage;
-use anyhow::Context;
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
+use uuid::Uuid;
 
 use crate::{
     authentication::UserId,
-    domain::SubscriberEmail,
-    email_client::EmailCient,
-    util::{e500, see_other},
+    idempotency::{save_response, try_processing, IdempotencyKey, NextAction},
+    util::{e400, e500, see_other},
     SubscriberStatus,
 };
 
@@ -18,76 +15,122 @@ pub struct FormData {
     subject: String,
     text_body: String,
     html_body: String,
+    // 幂等键
+    idempotency_key: String,
 }
 
-#[tracing::instrument(name = "给用户发布资讯", skip(body, pool, email_client))]
+#[tracing::instrument(
+    name = "发布newsletter issue", 
+    skip_all,
+    fields(user_id = % **user_id)
+)]
 pub async fn publish(
-    body: web::Form<FormData>,
+    form: web::Form<FormData>,
     pool: web::Data<PgPool>,
-    email_client: web::Data<EmailCient>,
-    request: HttpRequest,
     user_id: web::ReqData<UserId>,
 ) -> Result<impl Responder, actix_web::Error> {
-    let subscribers = get_confirmed_subscribers(&pool).await.map_err(e500)?;
-
-    for subscriber in subscribers {
-        email_client
-            .send(
-                &subscriber.email,
-                &body.subject,
-                &body.text_body,
-                &body.html_body,
-            )
-            .await
-            .with_context(|| format!("failed to publish newsletter to {:?}", &subscriber.email))
-            .map_err(e500)?;
+    fn send_success_message() {
+        FlashMessage::info(
+            r#"简报已接收，邮件将在短时间内发送，
+            可<a href="/admin/newsletter">点击此处</a>查看详情."#,
+        )
+        .send();
     }
 
-    FlashMessage::info("发送成功.").send();
-    Ok(see_other("/admin/dashboard"))
+    let user_id = user_id.into_inner();
+    let FormData {
+        subject,
+        text_body,
+        html_body,
+        idempotency_key,
+    } = form.0;
+    let idempotency_key: IdempotencyKey = idempotency_key.try_into().map_err(e400)?;
+
+    let mut transaction = match try_processing(&pool, &user_id, &idempotency_key)
+        .await
+        .map_err(e500)?
+    {
+        // 第一次请求，执行全部流程
+        NextAction::StartProcessing(t) => t,
+        // 第二次请求
+        // 等待第一次请求执行完成，响应写入数据库
+        // 获取响应并返回
+        NextAction::ReturnSavedResponse(saved_response) => {
+            send_success_message();
+            return Ok(saved_response);
+        }
+    };
+
+    // 存储邮件简报
+    let issue_id = insert_newsletter_issue(&mut transaction, &subject, &text_body, &html_body)
+        .await
+        .map_err(e500)?;
+    // 新增简报发布队列
+    enqueue_delivery_task(&mut transaction, &issue_id)
+        .await
+        .map_err(e500)?;
+    // 存储响应
+    let res = see_other("/admin/dashboard");
+    let res = save_response(&mut transaction, &user_id, &idempotency_key, res)
+        .await
+        .map_err(e500)?;
+
+    transaction.commit().await.map_err(e500)?;
+    send_success_message();
+    Ok(res)
 }
 
-struct ConfirmedSubscriber {
-    email: SubscriberEmail,
-}
-
-/// 获取所有已确认订阅的用户
-async fn get_confirmed_subscribers(
-    pool: &PgPool,
-) -> Result<Vec<ConfirmedSubscriber>, anyhow::Error> {
-    // 查询所有已确认订阅的用户
-    let rows = sqlx::query!(
+#[tracing::instrument(skip_all)]
+async fn insert_newsletter_issue(
+    executor: &mut PgConnection,
+    subject: &str,
+    text_body: &str,
+    html_body: &str,
+) -> sqlx::Result<Uuid> {
+    let newsletter_issue_id = Uuid::new_v4();
+    sqlx::query!(
         r#"
-        SELECT email FROM subscription 
-        WHERE status = $1
+        INSERT INTO newsletter_issue (
+            newsletter_issue_id,
+            subject,
+            text_body,
+            html_body,
+            published_at
+        ) VALUES (
+            $1, $2, $3, $4, now()
+        )
         "#,
+        newsletter_issue_id,
+        subject,
+        text_body,
+        html_body,
+    )
+    .execute(executor)
+    .await?;
+
+    Ok(newsletter_issue_id)
+}
+
+#[tracing::instrument(skip_all)]
+async fn enqueue_delivery_task(
+    executor: &mut PgConnection,
+    newsletter_issue_id: &Uuid,
+) -> sqlx::Result<()> {
+    sqlx::query!(
+        r#"
+        INSERT INTO issue_delivery_queue (
+            newsletter_issue_id,
+            subscriber_email
+        )
+        SELECT $1, email
+        FROM subscription
+        WHERE status = $2
+        "#,
+        newsletter_issue_id,
         SubscriberStatus::Confirmed.as_str()
     )
-    .fetch_all(pool)
-    .await
-    .context("failed to query confirmed subscribers.")?;
+    .execute(executor)
+    .await?;
 
-    // 过滤邮件地址验证失败的用户
-    // 由于程序更新迭代，邮件地址验证规则可能发生更改
-    // 之前验证通过的邮件地址可能现在会验证失败
-    // 这里对验证失败的用户打印一条警告日志，供开发人员排查处理
-    let confirmed_subscribers: Vec<ConfirmedSubscriber> = rows
-        .into_iter()
-        .filter_map(|r| match SubscriberEmail::parse(&r.email) {
-            Ok(email) => Some(ConfirmedSubscriber { email }),
-            Err(error) => {
-                tracing::warn!(
-                    "A confirmed subscriber is using an invalid email address. {}",
-                    error
-                );
-                None
-            }
-        })
-        .collect();
-    tracing::info!(
-        "共有{}位邮件地址有效的已确认订阅用户.",
-        &confirmed_subscribers.len()
-    );
-
-    Ok(confirmed_subscribers)
+    Ok(())
 }

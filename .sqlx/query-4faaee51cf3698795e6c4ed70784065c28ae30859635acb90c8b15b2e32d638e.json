@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "ALTER TABLE issue_delivery_queue DROP CONSTRAINT issue_delivery_queue_newsletter_issue_id_fkey",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "4faaee51cf3698795e6c4ed70784065c28ae30859635acb90c8b15b2e32d638e"
+}

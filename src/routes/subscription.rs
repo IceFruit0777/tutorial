@@ -61,7 +61,7 @@ pub async fn subscribe(
 async fn add_subscriber(
     executor: &mut PgConnection,
     subscriber: &Subscriber,
-) -> Result<Uuid, sqlx::Error> {
+) -> sqlx::Result<Uuid> {
     let subscriber_id = Uuid::new_v4();
 
     sqlx::query!(
@@ -86,7 +86,7 @@ async fn store_token(
     executor: &mut PgConnection,
     subscriber_id: Uuid,
     subscription_token: &str,
-) -> Result<(), sqlx::Error> {
+) -> sqlx::Result<()> {
     sqlx::query!(
         r#"
         INSERT INTO subscription_token (subscriber_id, subscription_token)
@@ -107,7 +107,7 @@ async fn send_confirm_email(
     email_client: &EmailCient,
     config: &Config,
     subscription_token: &str,
-) -> Result<(), reqwest::Error> {
+) -> reqwest::Result<()> {
     let confirm_link = format!(
         "{}/subscription/confirm?subscription_token={}",
         config.web.base_url, subscription_token

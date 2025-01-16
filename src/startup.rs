@@ -12,14 +12,11 @@ use crate::{
 };
 
 pub async fn run(
-    config: Config,
+    config: web::Data<Config>,
     listener: TcpListener,
-    pool: PgPool,
-) -> Result<Server, anyhow::Error> {
-    let config = web::Data::new(config);
-    let pool = web::Data::new(pool);
-    let email_client = web::Data::new(EmailCient::from_config(&config));
-
+    pool: web::Data<PgPool>,
+    email_client: web::Data<EmailCient>,
+) -> anyhow::Result<Server> {
     let secret_key = Key::from(config.web.hmac_secret.expose_secret().as_bytes());
     let cookie_msg_store = CookieMessageStore::builder(secret_key.clone()).build();
     let flash_msg_framework = FlashMessagesFramework::builder(cookie_msg_store).build();
@@ -33,6 +30,7 @@ pub async fn run(
                 secret_key.clone(),
             ))
             .wrap(TracingLogger::default())
+            .route("/", web::get().to(routes::home))
             .route("/health_check", web::get().to(routes::health_check))
             .route("/login", web::get().to(routes::login_form))
             .route("/login", web::post().to(routes::login))
