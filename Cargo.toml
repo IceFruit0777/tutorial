@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+actix-extensible-rate-limit = { version="0.4.0", default-features=false, features=[ "redis" ] }
 actix-session = { version="0.10.1", features=[ "redis-session", "redis-session-rustls" ] }
 actix-web = "4.9.0"
 actix-web-flash-messages = { version="0.5.0", features=[ "cookies" ] }
@@ -13,6 +14,7 @@ config = "0.14.1"
 linkify = "0.10.0"
 once_cell = "1.20.2"
 rand = "0.8.5"
+redis = { version="0.26.1", features=[ "tokio-rustls-comp", "aio", "connection-manager" ] }
 reqwest = { version="0.12.9", features=[ "json", "cookies" ] }
 secrecy = { version="0.10.3", features=[ "serde" ] }
 serde = { version="1.0.215", features=[ "derive" ] }

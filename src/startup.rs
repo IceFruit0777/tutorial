@@ -1,8 +1,13 @@
-use std::net::TcpListener;
+use std::{net::TcpListener, time::Duration};
 
+use actix_extensible_rate_limit::{
+    backend::{redis::RedisBackend, SimpleInputFunctionBuilder},
+    RateLimiter,
+};
 use actix_session::{storage::RedisSessionStore, SessionMiddleware};
 use actix_web::{cookie::Key, dev::Server, middleware::from_fn, web, App, HttpServer};
 use actix_web_flash_messages::{storage::CookieMessageStore, FlashMessagesFramework};
+use redis::aio::ConnectionManager;
 use secrecy::ExposeSecret;
 use sqlx::PgPool;
 use tracing_actix_web::TracingLogger;
@@ -20,15 +25,26 @@ pub async fn run(
     let secret_key = Key::from(config.web.hmac_secret.expose_secret().as_bytes());
     let cookie_msg_store = CookieMessageStore::builder(secret_key.clone()).build();
     let flash_msg_framework = FlashMessagesFramework::builder(cookie_msg_store).build();
-    let redis_store = RedisSessionStore::new(config.redis_uri.expose_secret()).await?;
+    let redis_session_store = RedisSessionStore::new(config.redis_uri.expose_secret()).await?;
+    let client = redis::Client::open(config.redis_uri.expose_secret()).unwrap();
+    let manager = ConnectionManager::new(client).await.unwrap();
+    let backend = RedisBackend::builder(manager).build();
 
     let server = HttpServer::new(move || {
+        let input = SimpleInputFunctionBuilder::new(Duration::from_secs(60), 100)
+            .real_ip_key()
+            .build();
+        let middleware = RateLimiter::builder(backend.clone(), input)
+            .add_headers()
+            .build();
+
         App::new()
             .wrap(flash_msg_framework.clone())
             .wrap(SessionMiddleware::new(
-                redis_store.clone(),
+                redis_session_store.clone(),
                 secret_key.clone(),
             ))
+            .wrap(middleware)
             .wrap(TracingLogger::default())
             .route("/", web::get().to(routes::home))
             .route("/health_check", web::get().to(routes::health_check))

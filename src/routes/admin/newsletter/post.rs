@@ -31,8 +31,8 @@ pub async fn publish(
 ) -> Result<impl Responder, actix_web::Error> {
     fn send_success_message() {
         FlashMessage::info(
-            r#"简报已接收，邮件将在短时间内发送，
-            可<a href="/admin/newsletter">点击此处</a>查看详情."#,
+            r#"简报已接收，邮件将很快发送给所有订阅用户，
+            可<a href="\#">点击此处</a>查看详情."#,
         )
         .send();
     }

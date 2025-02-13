@@ -46,10 +46,7 @@ impl EmailCient {
         )
     }
 
-    #[tracing::instrument(
-        name = "sending email",
-        skip_all,
-    )]
+    #[tracing::instrument(name = "sending email", skip_all)]
     pub async fn send(
         &self,
         receiver: &SubscriberEmail,
